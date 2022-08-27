@@ -21,6 +21,12 @@ const fetch = (url) => {
 }
 
 exports.handler = async (event) => {
+    function parseDate(input) {
+      let parts = input.split('-');
+      
+      return new Date(parts[0], parts[1]-1, parts[2]); // Note: months are 0-based
+    }
+    
     async function getCovidRiskDataForLatLng(covidRiskDataByCounty, location) {
       let countyInfoData = await fetch(`https://geo.fcc.gov/api/census/block/find?latitude=${location.lat}&longitude=${location.lng}&censusYear=2020&showall=false&format=json`);
 
@@ -30,8 +36,33 @@ exports.handler = async (event) => {
         }
       });
     }
+
+    function formatCovidRiskDataForLatLng(data) {
+      let riskLevelInteger = parseInt(data.CCL_community_burden_level_integer);
+      
+      let riskLevelString;
+      if (riskLevelInteger === 0) {
+        riskLevelString = 'Low';
+      } else if (riskLevelInteger === 1) {
+        riskLevelString = 'Medium';
+      } else if (riskLevelInteger === 2) {
+        riskLevelString = 'High';
+      }
+      
+      let lastUpdatedTimestamp = parseDate(data.CCL_report_date);
+      
+      return {
+        stateName: data.State_name,
+        countyName: data.County,
+        riskLevelInteger,
+        riskLevelString,
+        lastUpdatedString: lastUpdatedTimestamp.toLocaleDateString('en-us', { year: 'numeric', month: 'long', day: 'numeric' }),
+        lastUpdatedTimestamp
+      }
+    }
     
     const { queryStringParameters } = event;
+    
     if (!queryStringParameters || !queryStringParameters.location) {
         return {
             statusCode: 400,
@@ -46,7 +77,8 @@ exports.handler = async (event) => {
       let lng = location[1];
       
       let covidRiskDataForLatLng = await getCovidRiskDataForLatLng(covidRiskDataByCounty, { lat, lng });
+      let covidRiskDataForLatLngFormatted = formatCovidRiskDataForLatLng(covidRiskDataForLatLng[0]);
       
-      return covidRiskDataForLatLng[0]; 
+      return covidRiskDataForLatLngFormatted;
     }
 };
